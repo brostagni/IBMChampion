@@ -2,7 +2,91 @@
 
 > Automatically fill in your [IBM Champions advocacy reporting form](https://airtable.com/appuwf3eOGdO6x1oS/pagF5IfVT7m6unCbG/form) in seconds using **Bob**, IBM's AI assistant.
 
-Simply paste a link to your advocacy act (LinkedIn post, blog, talk, video…) and Bob generates a complete, copy-paste-ready report — correctly classified, within the 250-word limit, and aligned with the IBM Champions acceptance criteria.
+Simply paste a link to your advocacy act (LinkedIn post, blog, talk, video…) and Bob generates a complete, copy-paste-ready report — correctly classified, within the 250-word limit, and aligned with the IBM Champions acceptance criteria. Bob can also **fill the Airtable form automatically** using Puppeteer — you just click Submit.
+
+---
+
+## Prerequisites
+
+Before using the auto-fill feature, make sure the following are in place.
+
+### 1. Node.js (v18+)
+
+```bash
+node --version   # must return v18.x or higher
+```
+
+If not installed → [nodejs.org](https://nodejs.org)
+
+---
+
+### 2. Chrome for Testing (required by Puppeteer)
+
+```bash
+npx puppeteer browsers install chrome
+```
+
+Verify the binary was installed:
+```bash
+ls ~/.cache/puppeteer/chrome/
+# You should see a folder like: mac_arm-148.x.x.x  (or mac-148.x.x.x on Intel)
+```
+
+---
+
+### 3. MCP `fetch` configured in Bob — pinned version + Chrome path
+
+Open (or create) `~/.bob/settings/mcp.json` and add the `fetch` entry:
+
+```json
+{
+  "mcpServers": {
+    "fetch": {
+      "command": "/opt/homebrew/bin/npx",
+      "args": ["-y", "mcp-fetch@0.1.6"],
+      "env": {
+        "PUPPETEER_EXECUTABLE_PATH": "/Users/YOUR_USERNAME/.cache/puppeteer/chrome/mac_arm-148.0.7778.97/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing"
+      }
+    }
+  }
+}
+```
+
+> ⚠️ **Two things are mandatory here:**
+> - **Pinned version `mcp-fetch@0.1.6`** — without it, a newer version may be downloaded that expects a different Chrome binary.
+> - **`PUPPETEER_EXECUTABLE_PATH`** — without it, Puppeteer looks for a Chrome it cannot find and fails silently.
+
+To find your exact Chrome path after installation:
+```bash
+ls ~/.cache/puppeteer/chrome/
+# Copy the exact folder name, e.g. mac_arm-148.0.7778.97
+# Then build the full path:
+# ~/.cache/puppeteer/chrome/<FOLDER>/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing
+```
+
+On **Intel Mac**, replace `mac_arm-` with `mac-` and `chrome-mac-arm64` with `chrome-mac`.
+
+On **Windows**, the path will be under `%USERPROFILE%\.cache\puppeteer\chrome\`.
+
+---
+
+### 4. Bob reloaded after any `mcp.json` change
+
+Every time you modify `mcp.json`, you must reload Bob for the new MCP process to start with the correct environment variables.
+
+In Bob: `Cmd+Shift+P` → **Reload Window** (macOS) or `Ctrl+Shift+P` → **Reload Window** (Windows/Linux).
+
+---
+
+### Quick checklist
+
+| Prerequisite | Verification command |
+|---|---|
+| Node.js v18+ | `node --version` |
+| Chrome for Testing installed | `ls ~/.cache/puppeteer/chrome/` |
+| MCP fetch configured | read `~/.bob/settings/mcp.json` |
+| `AGENTS.md` personalised | read `AGENTS.md` at workspace root |
+| Bob reloaded | `Cmd+Shift+P` → Reload Window |
 
 ---
 
@@ -17,15 +101,15 @@ Bob is IBM's AI assistant, available at **[bob.ibm.com](https://bob.ibm.com)**.
 
 ---
 
-### Step 2 — Install Bob on your computer *(optional but recommended)*
+### Step 2 — Install Bob on your computer *(recommended)*
 
-Installing the Bob desktop app lets you open local folders as workspaces, which is required for Step 3–5.
+Installing the Bob desktop app lets you open local folders as workspaces, which is required for Steps 3–5.
 
 1. Go to **[bob.ibm.com](https://bob.ibm.com)** and click **Download** (macOS, Windows, or Linux).
 2. Install and launch the app.
 3. Sign in with the same IBM credentials.
 
-> You can also use Bob entirely in the browser — but you will need to create the folder and paste the `AGENTS.md` content manually if you skip the desktop app.
+> You can also use Bob in the browser — but you will need to paste the `AGENTS.md` content manually.
 
 ---
 
@@ -37,8 +121,7 @@ Create a dedicated folder inside Bob's playground directory:
 ~/Documents/Bob/Playground/IBMChampion/
 ```
 
-> The exact path of your playground may differ. In Bob desktop, you can find it under **Settings → Workspace**.  
-> You can name the sub-folder anything you like — `IBMChampion` is recommended for clarity.
+> The exact path of your playground may differ. In Bob desktop, check **Settings → Workspace**.
 
 **On macOS / Linux:**
 ```bash
@@ -70,7 +153,7 @@ New-Item -ItemType Directory -Path "$HOME\Documents\Bob\Playground\IBMChampion" 
 
 4. Save the file as `AGENTS.md` inside your `IBMChampion/` folder.
 
-> ⚠️ Do **not** rename the file — Bob specifically reads a file named `AGENTS.md` to load agent instructions automatically.
+> ⚠️ Do **not** rename the file — Bob specifically reads `AGENTS.md` to load agent instructions automatically.
 
 ---
 
@@ -95,11 +178,10 @@ Here is my advocacy act. Please analyze it and fill out my IBM Champion activity
 
 Bob will:
 - Fetch the page and detect the publication date automatically
-- Classify the activity type (from the official IBM Champions list)
+- Classify the activity type from the official IBM Champions list
 - Write a 250-word English description aligned with acceptance criteria
 - Output a complete, copy-paste-ready report
-
-3. Copy the report and paste it into the [IBM Champions Activity Form](https://airtable.com/appuwf3eOGdO6x1oS/pagF5IfVT7m6unCbG/form).
+- **Offer to fill the Airtable form automatically** — reply "yes, fill the form" and Bob opens the browser, fills every field, and asks you to click Submit
 
 ---
 
@@ -139,11 +221,14 @@ Suggested pairing    : Submit a related blog on IBM community
 Word count           : 198 / 250
 ```
 
+Then Bob offers:
+> 🤖 **Would you like me to fill in the form automatically?**
+
 ---
 
 ## Supported activity types
 
-Bob can classify and report **all official IBM Champions activity types**, including:
+Bob classifies all official IBM Champions activity types, including:
 
 - LinkedIn posts, articles, and reposts
 - Blog posts (IBM property or external)

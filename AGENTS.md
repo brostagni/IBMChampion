@@ -160,6 +160,151 @@ Video with IBM
 
 ---
 
+## Auto-fill the Form (Puppeteer)
+
+After generating the report, **always** offer to fill the Airtable form automatically using Puppeteer.
+
+### Trigger phrase
+As soon as the report is displayed, add this prompt at the bottom of your reply:
+
+> 🤖 **Would you like me to fill in the form automatically?**
+> Reply **"yes, fill the form"** and I will open the browser, type all fields, and you will only have to click **Submit**.
+
+### Auto-fill procedure (execute when user confirms)
+
+**CRITICAL — follow this exact order. Airtable is a React app: dropdowns first, text fields last.**
+
+#### Step 1 — Launch browser
+```
+action: launch-browser
+url: "https://airtable.com/appuwf3eOGdO6x1oS/pagF5IfVT7m6unCbG/form"
+headless: false
+width: 1280
+height: 900
+```
+Wait 4 seconds for full page load (use `execute_command: sleep 4`).
+
+#### Step 2 — Select Activity Type (1st combobox)
+```javascript
+// Open the dropdown — it is the first [role="combobox"] on the page
+const combos = await page.$$('[role="combobox"]');
+await combos[0].click();
+// Wait 1s, then click the matching [role="option"]
+const options = await page.$$('[role="option"]');
+for (const opt of options) {
+  const txt = await page.evaluate(el => el.textContent.trim(), opt);
+  if (txt === '<ACTIVITY_TYPE>') { await opt.click(); break; }
+}
+```
+
+#### Step 3 — Select Product(s) (2nd combobox)
+```javascript
+const combos = await page.$$('[role="combobox"]');
+await combos[1].click();
+// Wait 1s, then type in the search input
+const searchInput = await page.$('input[role="combobox"]');
+await searchInput.type('<PRODUCT_NAME>');
+// Wait 1s, then click matching option
+const options = await page.$$('[role="option"]');
+for (const opt of options) {
+  const txt = await page.evaluate(el => el.textContent.trim(), opt);
+  if (txt === '<PRODUCT_NAME>') { await opt.click(); break; }
+}
+await page.keyboard.press('Escape');
+```
+
+#### Step 4 — Set "How many MORE Acts" to Zero (3rd meaningful combobox)
+```javascript
+const combos = await page.$$('[role="combobox"]');
+await combos[2].click();
+const options = await page.$$('[role="option"]');
+for (const opt of options) {
+  const txt = await page.evaluate(el => el.textContent.trim(), opt);
+  if (txt === 'Zero') { await opt.click(); break; }
+}
+```
+
+#### Step 5 — Fill Description (aria-label="A1_DESCRIPTION")
+```javascript
+const desc = await page.$('[aria-label="A1_DESCRIPTION"]');
+await desc.click();
+await page.keyboard.type('<DESCRIPTION_TEXT>');
+```
+
+#### Step 6 — Fill URL and date using React-compatible setter
+```javascript
+await page.evaluate((url, date) => {
+  function fillReact(id, value, isInput) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const proto = isInput ? HTMLInputElement.prototype : HTMLTextAreaElement.prototype;
+    const setter = Object.getOwnPropertyDescriptor(proto, 'value');
+    if (setter?.set) setter.set.call(el, value);
+    else el.value = value;
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+  // URL field
+  fillReact('1690bd7419fe054748e4782e5f36e6ed', url, true);
+  // Date field
+  fillReact('2ce7526b84254e61dc79d9a6cd85f135', date, true);
+}, '<URL>', '<DATE_YYYY-MM-DD>');
+```
+
+#### Step 7 — Check "Can IBM Amplify?" if Yes
+```javascript
+await page.evaluate(() => {
+  const checkboxes = document.querySelectorAll('input[type="checkbox"], [role="checkbox"]');
+  if (checkboxes.length > 0) checkboxes[0].click();
+});
+```
+
+#### Step 8 — Fill identity fields LAST (React re-renders wipe them if done earlier)
+```javascript
+await page.evaluate(() => {
+  function fillReact(id, value, isInput) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const proto = isInput ? HTMLInputElement.prototype : HTMLTextAreaElement.prototype;
+    const setter = Object.getOwnPropertyDescriptor(proto, 'value');
+    if (setter?.set) setter.set.call(el, value);
+    else el.value = value;
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+  fillReact('ca8fb24b7f5e666a484de7f8d27f02a2', 'YOUR_CHAMPION_ID', true);   // Champion ID
+  fillReact('dea904cfdab912c365cc9abdaf12c679', 'YOUR_FIRST_NAME', false);     // First name
+  fillReact('d058d2de6bdff783297ef9ec70cf6706', 'YOUR_LAST_NAME', false);      // Last name
+  fillReact('39b69819de4d1f21f293e4efc480c360', 'your.email@company.com', false); // Primary email
+  fillReact('7a83bfb6f66d4280ed5ba3d412aa357e', 'your.alternate@email.com', false); // Alt email
+});
+```
+
+#### Step 9 — Screenshot + hand off to user
+Take a full-page screenshot, then tell the user:
+> "✅ The form is filled. Review the fields in the open browser, then click **Submit** to send."
+
+**Do NOT click Submit — ever.** The user must validate and submit manually.
+
+### Field ID reference (Airtable form — validated 2025-07)
+
+| Field | Type | ID / Selector |
+|---|---|---|
+| Champion Program ID | `input` | `ca8fb24b7f5e666a484de7f8d27f02a2` |
+| First name | `textarea` | `dea904cfdab912c365cc9abdaf12c679` |
+| Last name | `textarea` | `d058d2de6bdff783297ef9ec70cf6706` |
+| Primary Email | `textarea` | `39b69819de4d1f21f293e4efc480c360` |
+| Alternate Email | `textarea` | `7a83bfb6f66d4280ed5ba3d412aa357e` |
+| Activity Type | combobox | `[role="combobox"]` index 0 |
+| Product(s) Involved | combobox | `[role="combobox"]` index 1 + `input[role="combobox"]` search |
+| Description | contenteditable div | `[aria-label="A1_DESCRIPTION"]` |
+| Link / URL | `input` | `1690bd7419fe054748e4782e5f36e6ed` |
+| Can IBM Amplify? | checkbox | `input[type="checkbox"]` index 0 |
+| Date of Activity | `input` | `2ce7526b84254e61dc79d9a6cd85f135` |
+| How many MORE Acts | combobox | `[role="combobox"]` index 2 → select "Zero" |
+
+---
+
 ## Submission Link
 
 Always include this clickable link at the very top of every report, before the report block:
