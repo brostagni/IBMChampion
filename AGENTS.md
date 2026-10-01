@@ -286,22 +286,133 @@ Take a full-page screenshot, then tell the user:
 
 **Do NOT click Submit — ever.** The user must validate and submit manually.
 
-### Field ID reference (Airtable form — validated 2025-07)
+### Field ID reference (Airtable form — validated 2025-07, IDs updated 2026-10)
 
-| Field | Type | ID / Selector |
+> ⚠️ **Airtable generates dynamic field IDs** — they change between form deployments.
+> The IDs below were valid as of 2026-10. If `getElementById` returns `NOT FOUND` for all fields,
+> run the discovery snippet in **Lessons Learned §1** to get the current IDs, then update this table.
+
+| Field | Type | ID (2026-10) |
 |---|---|---|
-| Champion Program ID | `input` | `ca8fb24b7f5e666a484de7f8d27f02a2` |
-| First name | `textarea` | `dea904cfdab912c365cc9abdaf12c679` |
-| Last name | `textarea` | `d058d2de6bdff783297ef9ec70cf6706` |
-| Primary Email | `textarea` | `39b69819de4d1f21f293e4efc480c360` |
-| Alternate Email | `textarea` | `7a83bfb6f66d4280ed5ba3d412aa357e` |
+| Champion Program ID | `input` | `95acc2cce3fb3e69f35d4a5ed4b9b6df` |
+| First name | `textarea` | `696ca457ce0dde554ab606d888c674f4` |
+| Last name | `textarea` | `8aa7f39efa0259d5bcde8a774d7e563e` |
+| Primary Email | `textarea` | `732d6723e0f4e88d3b50f93879d903c3` |
+| Alternate Email | `textarea` | `f7e838fbce6175a904a6b89b4f213a66` |
 | Activity Type | combobox | `[role="combobox"]` index 0 |
-| Product(s) Involved | combobox | `[role="combobox"]` index 1 + `input[role="combobox"]` search |
+| Product(s) Involved | combobox | `[role="combobox"]` index 1 (1 097 options — do NOT use search input, scroll through options directly) |
 | Description | contenteditable div | `[aria-label="A1_DESCRIPTION"]` |
-| Link / URL | `input` | `1690bd7419fe054748e4782e5f36e6ed` |
-| Can IBM Amplify? | checkbox | `input[type="checkbox"]` index 0 |
-| Date of Activity | `input` | `2ce7526b84254e61dc79d9a6cd85f135` |
+| Link / URL | `input` | `823d588147cbdb9995c58b06a73e5b43` |
+| Can IBM Amplify? | checkbox | `[role="checkbox"]` index 0 (already checked = `aria-checked="true"`) |
+| Date of Activity | `input` (placeholder `yyyy-mm-dd`) | `11b03fd5318f2dac2d4aeae5d2eb5641` |
 | How many MORE Acts | combobox | `[role="combobox"]` index 2 → select "Zero" |
+| PRIVACY consent | checkbox | `[role="checkbox"]` index 1 — **must be clicked before Submit** |
+
+---
+
+## Lessons Learned — Airtable Auto-fill (2026-10)
+
+These notes were captured during a real auto-fill session. Apply them on every future run.
+
+### 1 — Field IDs are dynamic (Airtable regenerates them)
+
+The static IDs in the Field ID reference table above **will break** when Airtable redeploys the form.
+When `getElementById` returns `NOT FOUND` for all identity fields, run this discovery snippet first:
+
+```javascript
+// Run in exec-page to discover current field IDs
+const result = await page.evaluate(() => {
+  const fields = [];
+  document.querySelectorAll('input, textarea').forEach(el => {
+    const visible = window.getComputedStyle(el).display !== 'none' && el.offsetParent !== null;
+    if (visible && el.id) {
+      fields.push({
+        id: el.id,
+        tag: el.tagName,
+        placeholder: el.getAttribute('placeholder') || '',
+        y: Math.round(el.getBoundingClientRect().top)
+      });
+    }
+  });
+  return fields;
+});
+return JSON.stringify(result);
+```
+
+Map fields by vertical position (y) — form order is always:
+- y ≈ 33 → Champion Program ID (input)
+- y ≈ 156 (×2) → First name, Last name (two textareas side by side)
+- y ≈ 278 → Primary Email (textarea)
+- y ≈ 377 → Alternate Email (textarea)
+- y ≈ 1048 → Date of Activity (input, placeholder `yyyy-mm-dd`)
+- y ≈ 1068 → Link / URL (input)
+
+Then update the Field ID reference table with the new IDs before filling.
+
+### 2 — Cookie banner (Transcend) cannot be dismissed by clicking
+
+The Airtable form embeds a **Transcend** cookie banner injected via a third-party script.
+Clicking "Accept All" via Puppeteer does not persist — the banner re-appears on every screenshot.
+
+**Solution: inject a CSS override that permanently hides it.**
+Do this immediately after page load, before any other interaction:
+
+```javascript
+await page.evaluate(() => {
+  const style = document.createElement('style');
+  style.textContent = [
+    '[class*="cookie"]',
+    '[class*="Cookie"]',
+    '[class*="consent"]',
+    '[class*="Consent"]',
+    '[id*="cookie"]',
+    '[id*="transcend"]',
+    '[id*="Transcend"]',
+    'div[style*="z-index: 2147483"]',
+    'div[style*="z-index:2147483"]'
+  ].join(',') + ' { display: none !important; visibility: hidden !important; pointer-events: none !important; }';
+  document.head.appendChild(style);
+});
+```
+
+Apply this **once after launch**, then never try to click the cookie button again.
+
+### 3 — Champion Program ID field strips non-numeric characters
+
+The Champion Program ID field (`input[type="text"]`) silently strips the `ID` prefix.
+Entering `ID123456789` results in `123456789` in the field — this is expected Airtable validation behaviour.
+**Do not retry** — `123456789` is the correct stored value.
+
+### 4 — Product search input is unreliable — use full option list instead
+
+`input[role="combobox"]` inside the Products dropdown does not filter results reliably via Puppeteer `type()`.
+**Solution**: click the combobox to open it (wait 1 200 ms for all 1 097 options to render), then iterate
+`page.$$('[role="option"]')` and match by `textContent` directly. No search input needed.
+
+For IBM OpenPages, use `Governance, Risk, and Compliance (GRC)` (exact label in the list).
+
+### 5 — PRIVACY checkbox must be clicked before Submit
+
+The form has a mandatory PRIVACY consent checkbox (`[role="checkbox"]` index 1) at the bottom.
+It is separate from the "Can IBM Amplify?" checkbox (index 0).
+Always click it explicitly — the form will not submit without it.
+
+### 6 — Revised auto-fill order (apply from now on)
+
+Execute steps in this exact order to avoid React re-render wipes:
+
+1. Launch browser → navigate to form URL
+2. **Inject CSS cookie banner suppressor** (Step 2 above — do this first)
+3. Wait 4 s for full page load
+4. Select Activity Type (combobox index 0)
+5. Select Product(s) (combobox index 1 — full option list, no search)
+6. Select "Zero" for MORE Acts (combobox index 2)
+7. Fill Description (`[aria-label="A1_DESCRIPTION"]`)
+8. Fill URL + Date via React setter
+9. Click "Can IBM Amplify?" checkbox (index 0)
+10. Click PRIVACY checkbox (index 1)
+11. Fill identity fields LAST via React setter (Champion ID, First/Last name, emails)
+12. Take full-page screenshot and hand off to user
 
 ---
 
